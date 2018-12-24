@@ -1,0 +1,19 @@
+
+
+参考资料:
+1.C#网页自动填表自动登录—sonicrang（最简单的代码阐述了使用WebBrowser实现自动登录）
+http://blog.csdn.net/sonicrang/article/details/5878611
+2.C#中的WebBrowser控件的使用—方培工作室（详细讲述了WebBrowser控件中的使用方法）
+http://www.cnblogs.com/txw1958/archive/2012/09/24/CSharp-WebBrowser.html
+3.C#实现POST提交方式—陈立国（最经典文章之一,详细讲述了三种方法:WebBrowser、WebClient、HttpWebRequest但不知道最初是那位大师人物写的）
+http://www.cnblogs.com/cgli/archive/2011/04/09/2010497.html
+5.C#自动登录Login代码—珍惜当下（比较完整的代码讲述登录功能，仅有代码）
+http://hi.baidu.com/zkbob22/item/da897035b65516362e0f8181
+6.暴力破解网站密码—相信自己（一个暴力破解全代码,重点是思想,万能密码尝试,但我没有实现成功）
+http://blog.sina.com.cn/s/blog_4de05339010109g7.html
+7.关于C#模拟登录的论坛讨论（其中一些代码比较优秀）
+http://bbs.csdn.net/topics/330239749?page=1
+8.编程代码实现网站自动登录C#（与我的思想方法类似）
+http://wenku.baidu.com/view/bc46ff9d6bec0975f465e208.html
+9.C# WinForm WebBrowser模拟登录打卡—Kelvin峰（过于高深，有待以后研究）
+http://blog.csdn.net/llftc/article/details/7036746 

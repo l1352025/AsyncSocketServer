@@ -1,0 +1,7 @@
+
+http://freshflower.iteye.com/blog/2285286		// C#SocketAsyncEventArgs实现高效能多并发TCPSocket通信 (客户端实现) 
+
+https://blog.csdn.net/noble007/article/details/54613593	  // C#SocketAsyncEventArgs实现高效能多并发TCPSocket通信 (服务器实现) 
+
+
+https://www.cnblogs.com/yang_sy/p/3784151.html		// 垃圾回收原理
