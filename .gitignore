@@ -1,3 +1,5 @@
 /AsyncSocketClient/obj
 /AsyncSocketClient/bin
+/AsyncSocketServer/obj
+/AsyncSocketServer/bin
 /.vs
