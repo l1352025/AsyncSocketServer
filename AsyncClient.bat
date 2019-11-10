@@ -1,5 +1,5 @@
 
 
-@start AsyncSocketClient\bin\Debug\AsyncSocketClient.exe
+@start AsyncSocketClient\bin\Release\AsyncSocketClient.exe
 
 @quit
