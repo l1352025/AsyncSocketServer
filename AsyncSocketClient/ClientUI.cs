@@ -11,25 +11,23 @@ using System.Net;
 
 namespace AsyncSocketClient
 {
+    using ElectricPowerLib.Common;
     using XmlHelper;
     public partial class ClientUI : Form
     {
         private IOCPClient tcpClient;
         private Queue<byte[]> sendBufferQueue;
         private Semaphore sendSem;
+        Thread clientThread;
 
         private const int MAX_RetryCnt = 10;
         private int retryCnt = 0;
 
-        private const int MAX_CNT = 1000;
+        private const int MAX_Repeat = 1;
         int cnt = 0;
         public ClientUI()
         {
             InitializeComponent();
-
-            Thread clientThread = new Thread(TcpClientHandle);
-            clientThread.IsBackground = true;
-            clientThread.Start();
 
             sendBufferQueue = new Queue<byte[]>();
             sendSem = new Semaphore(0, 10);
@@ -38,41 +36,42 @@ namespace AsyncSocketClient
         #region TcpClient Process
         public void TcpClientHandle()
         {
-            tcpClient = new IOCPClient(IPAddress.Parse("127.0.0.1"), 8088);
-            tcpClient.Connected += OnConnected;
-            tcpClient.Disconnected += OnDisconnected;
-            tcpClient.DataRecieved += OnDataRecieved;
-            tcpClient.DataSent += OnDataSent;
-
             byte[] buffer;
 
             while (Thread.CurrentThread.IsAlive)
             {
-                sendSem.WaitOne();
+                if (!tcpClient.IsConnected && retryCnt < MAX_RetryCnt)
+                {
+                    tcpClient.Connect();
+                    retryCnt++;
+                    Thread.Sleep(100);
+
+                    while(sendBufferQueue.Count > 0)
+                        sendBufferQueue.Dequeue();
+
+                    continue;
+                }
+
                 if (sendBufferQueue.Count > 0)
                 {
-                    if (!tcpClient.IsConnected && retryCnt < MAX_RetryCnt)
-                    {
-                        tcpClient.Connect();
-                        retryCnt++;
-                        Thread.Sleep(100);
-                        sendSem.Release();
-                        continue;
-                    }
+                    sendSem.WaitOne();
+                    buffer = sendBufferQueue.Dequeue();
+                    tcpClient.Send(buffer);
+                    cnt++;
 
-                    if (cnt < MAX_CNT)
+                    if (cnt < MAX_Repeat)
                     {
-                        buffer = sendBufferQueue.Dequeue();
-                        tcpClient.Send(buffer);
-                        cnt++;
-
                         Thread.Sleep(10);
-                        btLogin_Click(null, null);
+                        //btLogin_Click(null, null);
                     }
                 }
+
+                Thread.Sleep(10);
             }
         }
+        #endregion
 
+        #region Event connect/discnnt/send/recv
         private void OnConnected(object sender, AsyncSocketClientArgs e)
         {
             AddToCommLog(e.Msg, Color.Red);
@@ -80,18 +79,40 @@ namespace AsyncSocketClient
 
         private void OnDisconnected(object sender, AsyncSocketClientArgs e)
         {
+            
             AddToCommLog(e.Msg, Color.Red);
         }
 
         private void OnDataSent(object sender, AsyncSocketClientArgs e)
         {
-            AddToCommLog(e.Msg + " " + cnt, Color.Red);
+            sb.Clear();
+            sb.Append(DateTime.Now.ToString("[HH:mm:ss.fff] ") + "  Tx: ");
+            for (int i = 0; i < e.Length; i++)
+            {
+                sb.Append(e.Buffer[i].ToString("X2") + " ");
+            }
+            AddToCommLog(sb.ToString(), Color.Red);
+            //AddToCommLog(e.Msg + " " + cnt, Color.Red);
         }
+
+        StringBuilder sb = new StringBuilder();
 
         private void OnDataRecieved(object sender, AsyncSocketClientArgs e)
         {
-            string msg = e.Msg + Encoding.UTF8.GetString(e.Buffer);
-            AddToCommLog(msg, Color.Blue);
+            //string msg = e.Msg + Encoding.UTF8.GetString(e.Buffer);
+            
+            byte[] buf = e.Buffer;
+            int index = 0;
+            int len = e.Length;
+
+            sb.Clear();
+            sb.Append(DateTime.Now.ToString("[HH:mm:ss.fff] ") + "Rx  : ");
+            for (int i = index; i < index + len; i++)
+            {
+                sb.Append(buf[i].ToString("X2") + " ");
+            }
+
+            AddToCommLog(sb.ToString(), Color.Blue);
         }
         #endregion
 
@@ -138,7 +159,7 @@ namespace AsyncSocketClient
 
         private void btSignUp_Click(object sender, EventArgs e)
         {
-            cnt = MAX_CNT;
+            cnt = MAX_Repeat;
 
             long ts = DateTime.Parse("2018-04-25 11:12:13.123").ToBinary();
             //long ts = DateTime.Now.ToBinary();
@@ -154,58 +175,65 @@ namespace AsyncSocketClient
         }
         #endregion
 
-        #region PK10 Plan Set
-        private void btPlan_pks1_Click(object sender, EventArgs e)
-        {
-           txtSelfCmd.Text += XmlHelper.Read("userInfo", "item");
-        }
-
-        private void btPlan_pks2_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void btPlan_pks3_Click(object sender, EventArgs e)
-        {
-
-        }
-        #endregion
-
-        #region SSC Plan Set
-        private void btPlan_ssc1_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void btPlan_ssc2_Click(object sender, EventArgs e)
-        {
-
-        }
-
-        private void btPlan_ssc3_Click(object sender, EventArgs e)
-        {
-
-        }
-
         private void btGetCode_ssc_Click(object sender, EventArgs e)
         {
 
         }
 
-        #endregion 
-
-        #region Plan Order
-        private void btOderPlan_Click(object sender, EventArgs e)
-        {
-
-        }
-        #endregion
-
         #region Self-Command
         private void btSelfCmdSend_Click(object sender, EventArgs e)
         {
-
+            byte[] bytes;
+            if (chkHex.Checked)
+            {
+                bytes = Util.GetBytesFromStringHex(txtSelfCmd.Text, " ");
+            }
+            else
+            {
+                bytes = Encoding.UTF8.GetBytes(txtSelfCmd.Text);
+            }
+            sendBufferQueue.Enqueue(bytes);
+            sendSem.Release();
         }
         #endregion
+
+        private void btnCnnt_Click(object sender, EventArgs e)
+        {
+            if(btnCnnt.Text == "连接")
+            {
+                if (string.IsNullOrEmpty(txtIp.Text))
+                {
+                    txtIp.Text = "127.0.0.1";
+                }
+
+                try
+                {
+                    tcpClient = new IOCPClient(IPAddress.Parse(txtIp.Text), ushort.Parse(txtPort.Text));
+                }
+                catch (Exception) {
+                    MessageBox.Show("Tcp Socket 创建失败！");
+                    return; 
+                }
+
+                tcpClient.Connected += OnConnected;
+                tcpClient.Disconnected += OnDisconnected;
+                tcpClient.DataRecieved += OnDataRecieved;
+                tcpClient.DataSent += OnDataSent;
+
+                retryCnt = 0;
+                clientThread = new Thread(TcpClientHandle);
+                clientThread.IsBackground = true;
+                clientThread.Start();
+
+                btnCnnt.Text = "断开";
+            }
+            else
+            {
+                clientThread.Abort();
+                if(tcpClient.IsConnected) tcpClient.Close();
+
+                btnCnnt.Text = "连接";
+            }
+        }
     }
 }

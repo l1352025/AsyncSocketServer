@@ -54,6 +54,7 @@
     </Compile>
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Util.cs" />
     <Compile Include="XmlHelper.cs" />
     <EmbeddedResource Include="ClientUI.resx">
       <DependentUpon>ClientUI.cs</DependentUpon>

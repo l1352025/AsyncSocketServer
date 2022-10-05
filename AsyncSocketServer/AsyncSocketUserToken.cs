@@ -1,27 +1,26 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 
 namespace AsyncSocketServer
 {
     public class AsyncSocketUserToken
     {
         private Socket _socket;                     // 通信SOKET
+        private AsyncEventArgsPool _eventArgsPool;
 
         public EndPoint LocalEndPoint { get; set; }     // 本地地址：客户端终结点 
         public EndPoint RemoteEndPoint { get; set; }    // 远程地址：服务器终结点 
-        public SocketAsyncEventArgs SendEventArgs { get; set; } // 通信SOKET异步发送事件参数 
-        public SocketAsyncEventArgs RecvEventArgs { get; set; } // 通信SOKET异步接收事件参数 
+        //public SocketAsyncEventArgs SendEventArgs { get; set; }     // 通信SOKET异步发送事件参数 
+        public AsyncEventArgs RecvEventArgs { get; set; }     // 通信SOKET异步接收事件参数 
         
         public DateTime ConnectTime { get; set; }       // 连接时间 
         public DateTime ActiveTime { get; set; }        // 活动时间 
 
         //public UserInfoModel UserInfo { get; set; }   // 所属用户信息 
 
-        //public List<byte> Buffer { get; set; }          // 数据缓存区
+        public int AllocArgsPoolCnt => _eventArgsPool.AllocCount;
+        public int FreeArgsPoolCnt => _eventArgsPool.FreeCount;
 
         public Socket ConnectSocket                     // 通信SOKET
         {
@@ -33,19 +32,32 @@ namespace AsyncSocketServer
             set
             {
                 _socket = value;
-                SendEventArgs.AcceptSocket = _socket;
                 RecvEventArgs.AcceptSocket = _socket;
             }
         }
 
 
-        public AsyncSocketUserToken()
+        public AsyncSocketUserToken(AsyncEventArgsPool eventArgsPool)
         {
-            SendEventArgs = new SocketAsyncEventArgs();
-            SendEventArgs.UserToken = this;
+            _eventArgsPool = eventArgsPool;
 
-            RecvEventArgs = new SocketAsyncEventArgs();
+            RecvEventArgs = new AsyncEventArgs();
             RecvEventArgs.UserToken = this;
-        }  
+        }
+        
+        public AsyncEventArgs NewArgs()
+        {
+            var args = _eventArgsPool.Pop();
+            if(args != null) args.UserToken = this;
+            args.SetBuffer(args.Buffer, args.Offset, 1024 * 100);
+
+            return args;
+        }
+
+        public void FreeArgs(AsyncEventArgs args)
+        {
+            args.IsReuse = false;
+            _eventArgsPool.Push(args);
+        }
     }
 }

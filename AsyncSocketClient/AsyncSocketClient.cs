@@ -166,7 +166,7 @@ namespace AsyncSocketClient
             {
                 if (DataSent != null)
                 {
-                    DataSent(this, new AsyncSocketClientArgs("Send Success"));
+                    DataSent(this, new AsyncSocketClientArgs("Send Success", e.Buffer, e.Offset, e.BytesTransferred));
                 }
             }
             else
@@ -231,7 +231,7 @@ namespace AsyncSocketClient
                         //TODO 处理数据
                         if (DataRecieved != null)
                         {
-                            DataRecieved(this, new AsyncSocketClientArgs("Recieved : ", data));
+                            DataRecieved(this, new AsyncSocketClientArgs("Recv: ", e.Buffer, e.Offset, e.BytesTransferred));
                         }
   
                     }
@@ -254,7 +254,7 @@ namespace AsyncSocketClient
 
         public void Close()
         {
-            _clientSock.Disconnect(true);
+            if(_clientSock.Connected) _clientSock.Disconnect(false);
             _connected = false;
 
             if (Disconnected != null)

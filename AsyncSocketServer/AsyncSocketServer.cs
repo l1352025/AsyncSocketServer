@@ -5,6 +5,7 @@ using System.Text;
 using System.Net.Sockets;
 using System.Net;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace AsyncSocketServer
 {
@@ -13,7 +14,7 @@ namespace AsyncSocketServer
     /// </summary>  
     public class AsyncSocketServer : IDisposable
     {
-        const int opsToPreAlloc = 2;
+        const int opsToPreAlloc = 4;
 
         #region Fields
         private int _maxClient;                             // 服务器程序允许的最大客户端连接数
@@ -23,6 +24,7 @@ namespace AsyncSocketServer
         private Semaphore _stopWaitSem;                     // 服务器停止等待信号量, 与接受连接互斥
         private BufferManager _bufferManager;               // 缓冲区管理
         private AsyncSocketUserTokenPool _userTokenPool;    // 用户池 
+        private AsyncEventArgsPool _eventArgsPool;
 
         private int _clientCount;                           // 当前的连接的客户端数
         private AsyncSocketUserTokenList _clientList;       // 当前的连接的客户端列表
@@ -48,11 +50,18 @@ namespace AsyncSocketServer
         public IPEndPoint LocalEndPoint { get; private set; }   // 服务器本地端点[ip : port]
         public Encoding Encoding    { get; private set; }       // 通信使用的编码     
         public int SocketTimeOutMS  { get; private set; }       // socket 最大超时时间，单位ms
+        public BufferManager BufferMgr => _bufferManager;
+        public int ClientCount => _clientCount;
+        public int TotalRecvdBytes
+        {
+            get { return _totalBytesRead; }
+            set { _totalBytesRead = value; }
+        }
 
         public AsyncSocketUserTokenList ConnectedClients        // 获取客户端列表 
         {
             get { return _clientList; }
-        }  
+        }
 
         #endregion
 
@@ -63,8 +72,9 @@ namespace AsyncSocketServer
         /// </summary>  
         /// <param name="listenPort">监听的端口</param>  
         /// <param name="maxClient">最大的客户端数量</param>  
-        public AsyncSocketServer(int listenPort, int maxClient)
-            : this(IPAddress.Any, listenPort, maxClient)
+        /// <param name="perBufSize">每个socket收/发缓存大小</param>  
+        public AsyncSocketServer(int listenPort, int maxClient, int perBufSize)
+            : this(IPAddress.Any, listenPort, maxClient, perBufSize)
         {
         }
 
@@ -73,8 +83,9 @@ namespace AsyncSocketServer
         /// </summary>  
         /// <param name="localEP">监听的终结点</param>  
         /// <param name="maxClient">最大客户端数量</param>  
-        public AsyncSocketServer(IPEndPoint localEP, int maxClient)
-            : this(localEP.Address, localEP.Port, maxClient)
+        /// <param name="perBufSize">每个socket收/发缓存大小</param>  
+        public AsyncSocketServer(IPEndPoint localEP, int maxClient, int perBufSize)
+            : this(localEP.Address, localEP.Port, maxClient, perBufSize)
         {
         }
 
@@ -84,7 +95,8 @@ namespace AsyncSocketServer
         /// <param name="localIPAddress">监听的IP地址</param>  
         /// <param name="listenPort">监听的端口</param>  
         /// <param name="maxClient">最大客户端数量</param>  
-        public AsyncSocketServer(IPAddress localIPAddress, int listenPort, int maxClient)
+        /// <param name="perBufSize">每个socket收/发缓存大小</param>  
+        public AsyncSocketServer(IPAddress localIPAddress, int listenPort, int maxClient, int perBufSize)
         {
             Address = localIPAddress;
             Port = listenPort;
@@ -92,6 +104,7 @@ namespace AsyncSocketServer
             Encoding = Encoding.Default;
 
             _maxClient = maxClient;
+            _bufferSize = perBufSize;
 
             SocketTimeOutMS = 5 * 60 * 1000;
 
@@ -99,6 +112,10 @@ namespace AsyncSocketServer
 
         #endregion
 
+        #region Event
+        public event EventHandler<AsyncEventArgs> OnRecieve;
+        public event EventHandler<AsyncEventArgs> OnConnectChange;
+        #endregion
 
         #region Initial
 
@@ -111,9 +128,11 @@ namespace AsyncSocketServer
 
             _clientCount = 0;
 
-            _bufferManager = new BufferManager(_bufferSize * _maxClient * (opsToPreAlloc ), _bufferSize);
+            _bufferManager = new BufferManager(_maxClient * opsToPreAlloc, _bufferSize);
 
             _userTokenPool = new AsyncSocketUserTokenPool(_maxClient);
+
+            _eventArgsPool = new AsyncEventArgsPool(_maxClient * 2);
 
             _clientList = new AsyncSocketUserTokenList();
 
@@ -126,18 +145,32 @@ namespace AsyncSocketServer
             // preallocate pool of AsyncSocketUserToken and LogOutEventArgs
             AsyncSocketUserToken userToken;
             LogOutEventArgs logArgs;
+            AsyncEventArgs eventArgs1;
+            AsyncEventArgs eventArgs2;
+            AsyncEventArgs eventArgs3;
+
             for (int i = 0; i < _maxClient; i++)
             {
                 //Pre-allocate a set of reusable AsyncSocketUserToken  
-                userToken = new AsyncSocketUserToken();
-                userToken.SendEventArgs.Completed += new EventHandler<SocketAsyncEventArgs>(OnIOCompleted);
+                userToken = new AsyncSocketUserToken(_eventArgsPool);
+                eventArgs1 = new AsyncEventArgs();
+                eventArgs2 = new AsyncEventArgs();
+                eventArgs3 = new AsyncEventArgs();
                 userToken.RecvEventArgs.Completed += new EventHandler<SocketAsyncEventArgs>(OnIOCompleted);
+                eventArgs1.Completed += new EventHandler<SocketAsyncEventArgs>(OnIOCompleted);
+                eventArgs2.Completed += new EventHandler<SocketAsyncEventArgs>(OnIOCompleted);
+                eventArgs3.Completed += new EventHandler<SocketAsyncEventArgs>(OnIOCompleted);
 
                 // assign a byte buffer from the buffer pool to the SocketAsyncEventArg object  
                 _bufferManager.SetBuffer(userToken.RecvEventArgs);
-                _bufferManager.SetBuffer(userToken.SendEventArgs);
+                _bufferManager.SetBuffer(eventArgs1);
+                _bufferManager.SetBuffer(eventArgs2);
+                _bufferManager.SetBuffer(eventArgs3);
 
                 _userTokenPool.Push(userToken);
+                _eventArgsPool.Push(eventArgs1);
+                _eventArgsPool.Push(eventArgs2);
+                _eventArgsPool.Push(eventArgs3);
 
                 // Pre-allocate a set of reusable LogOutEventArgs
                 logArgs = new LogOutEventArgs("", 0, 0);
@@ -237,7 +270,7 @@ namespace AsyncSocketServer
         /// <summary>  
         /// 从客户端开始接受一个连接操作  
         /// </summary>  
-        private void StartAccept(SocketAsyncEventArgs aAcceptArgs)
+        private void StartAccept(AsyncEventArgs aAcceptArgs)
         {
             if(!IsRunning)
             {
@@ -246,7 +279,7 @@ namespace AsyncSocketServer
 
             if (aAcceptArgs == null)
             {
-                aAcceptArgs = new SocketAsyncEventArgs();
+                aAcceptArgs = new AsyncEventArgs();
                 aAcceptArgs.Completed += new EventHandler<SocketAsyncEventArgs>(OnAcceptCompleted);
             }
             else
@@ -268,14 +301,14 @@ namespace AsyncSocketServer
         /// <param name="e">SocketAsyncEventArg associated with the completed accept operation.</param>  
         private void OnAcceptCompleted(object sender, SocketAsyncEventArgs e)
         {
-            ProcessAccept(e);
+            ProcessAccept((AsyncEventArgs)e);
         }
 
         /// <summary>  
         /// 监听Socket接受处理  
         /// </summary>  
         /// <param name="e">SocketAsyncEventArg associated with the completed accept operation.</param>  
-        private void ProcessAccept(SocketAsyncEventArgs e)
+        private void ProcessAccept(AsyncEventArgs e)
         {
             if (!IsRunning)
             {
@@ -303,6 +336,12 @@ namespace AsyncSocketServer
                         userToken.RemoteEndPoint = userToken.ConnectSocket.RemoteEndPoint;
                         userToken.ConnectTime = DateTime.Now;
                         ConnectedClients.Add(userToken);
+
+                        userToken.ConnectSocket.SendBufferSize = 1024000;
+                        userToken.ConnectSocket.ReceiveBufferSize = 1024000;
+
+                        e.UserToken = userToken;
+                        OnConnectChange?.Invoke("cnnt", e);
 
                         _stopWaitSem.Release();
 
@@ -344,10 +383,10 @@ namespace AsyncSocketServer
                 switch (e.LastOperation)
                 {
                     case SocketAsyncOperation.Send:
-                        ProcessSend(e);
+                        ProcessSend((AsyncEventArgs)e);
                         break;
                     case SocketAsyncOperation.Receive:
-                        ProcessReceive(e);
+                        ProcessReceive((AsyncEventArgs)e);
                         break;
                     default:
                         throw new ArgumentException("The last operation completed on the socket was not a receive or send");
@@ -360,6 +399,8 @@ namespace AsyncSocketServer
             }
         }
 
+
+
         #endregion
 
         #region Recieve
@@ -369,7 +410,7 @@ namespace AsyncSocketServer
         ///接收完成时处理函数  
         /// </summary>  
         /// <param name="aRecvArgs">与接收完成操作相关联的SocketAsyncEventArg对象</param>  
-        private void ProcessReceive(SocketAsyncEventArgs aRecvArgs)
+        private void ProcessReceive(AsyncEventArgs aRecvArgs)
         {
             if (!IsRunning)
             {
@@ -388,30 +429,77 @@ namespace AsyncSocketServer
                 userToken.ActiveTime = DateTime.Now;
 
                 //判断所有需接收的数据是否已经完成  
-                if (userToken.ConnectSocket.Available == 0)
+                //if (userToken.ConnectSocket.Available == 0)
+                if (aRecvArgs.BytesTransferred > 0)
                 {
                     // 增加服务器接收的总字节数。
                     Interlocked.Add(ref _totalBytesRead, aRecvArgs.BytesTransferred);
+
+
+                    OnRecieve?.Invoke("ProcessReceive", aRecvArgs);
+                    if (!aRecvArgs.IsReuse)
+                    {
+                        //(aRecvArgs.UserToken as AsyncSocketUserToken).FreeArgs(aRecvArgs);
+                    }
+                    //Log4Debug("recv FreeArgs, poolCnt: " + userToken.ArgsPoolCnt);
+
+                    //new Thread(obj =>
+                    //{
+                    //    var args = obj as AsyncEventArgs;
+                    //    var token = (args.UserToken as AsyncSocketUserToken);
+                    //    OnRecieve?.Invoke("ProcessReceive", args);
+                    //    if (!args.IsReuse)
+                    //        token.FreeArgs(args);
+
+                    //    //Log4Debug(string.Format("recv FreeArgs, alloc pool: {0} ,  free pool: {1}",
+                    //    //    token.AllocArgsPoolCnt, token.FreeArgsPoolCnt));
+
+                    //}).Start(aRecvArgs);
 
                     // TODO 处理数据 
                     //string info = Encoding.Default.GetString(aRecvArgs.Buffer, aRecvArgs.Offset, aRecvArgs.BytesTransferred);
                     //Log4Debug(String.Format("已接收 {0} byte，当前接收[{1}]：{2}",_totalBytesRead, s.RemoteEndPoint.ToString(), info));
 
+
                     // 给客户端回显。
-                    byte[] buf = userToken.SendEventArgs.Buffer;
-                    int offset = userToken.SendEventArgs.Offset;
-                    Array.Copy(aRecvArgs.Buffer, aRecvArgs.Offset, buf, offset, aRecvArgs.BytesTransferred);
-                    Send(userToken.SendEventArgs, buf, offset, aRecvArgs.BytesTransferred);
+                    //byte[] buf = userToken.SendEventArgs.Buffer;
+                    //int offset = userToken.SendEventArgs.Offset;
+                    //Array.Copy(aRecvArgs.Buffer, aRecvArgs.Offset, buf, offset, aRecvArgs.BytesTransferred);
+                    //Send(userToken.SendEventArgs, buf, offset, aRecvArgs.BytesTransferred);
+
 
                     //Send(serToken.SendEventArgs, aRecvArgs.Buffer, aRecvArgs.Offset, aRecvArgs.BytesTransferred);
 
                 }
 
-                if (!s.ReceiveAsync(aRecvArgs))//为接收下一段数据，投递接收请求
+                bool repeat = false;
+
+                do
                 {
-                    //同步接收时处理接收完成事件  
-                    ProcessReceive(aRecvArgs);
-                }
+                    //var recvArgs = userToken.NewArgs();
+                    var recvArgs = aRecvArgs;
+
+                    if (!s.ReceiveAsync(recvArgs))//为接收下一段数据，投递接收请求
+                    {
+                        //同步接收时处理接收完成事件  
+                        //var args = recvArgs;
+                        
+                        //Task.Factory.StartNew( obj => { 
+                        //    ProcessReceive(obj as AsyncEventArgs);
+                        //}, args);
+
+                        ProcessReceive(recvArgs);
+
+                        //repeat = true;
+                    }
+                    else
+                    {
+                        repeat = false;
+                    }
+
+                } while (repeat);
+
+
             }
             else
             {
@@ -428,25 +516,40 @@ namespace AsyncSocketServer
         /// </summary>  
         /// <param name="aSendArgs"></param>  
         /// <param name="buffer"></param>  
-        public void Send(SocketAsyncEventArgs aSendArgs, byte[] buffer)
+        public void Send(AsyncEventArgs aSendArgs, byte[] buffer)
         {
             Send(aSendArgs, buffer, 0, buffer.Length);
         }
 
-        public void Send(SocketAsyncEventArgs aSendArgs, byte[] buffer, int offset, int count)
+        public void Send(AsyncEventArgs aSendArgs)
+        {
+            Send(aSendArgs, aSendArgs.Buffer, aSendArgs.Offset, aSendArgs.Count);
+        }
+
+        StringBuilder sb = new StringBuilder();
+
+        public void Send(AsyncEventArgs aSendArgs, byte[] buffer, int offset, int count)
         {
             AsyncSocketUserToken userToken = aSendArgs.UserToken as AsyncSocketUserToken;
             if (userToken.ConnectSocket.Connected)
             {
                 //Array.Copy(buffer, offset, aSendArgs.Buffer, 0, count);//设置发送数据  
 
-                aSendArgs.SetBuffer(buffer, offset, count); //设置发送数据  
+                aSendArgs.SetBuffer(buffer, offset, count); //设置发送数据 
 
-                if (!userToken.ConnectSocket.SendAsync(aSendArgs))//投递发送请求，这个函数有可能同步发送出去，这时返回false，并且不会引发SocketAsyncEventArgs.Completed事件  
+                if (!userToken.ConnectSocket.SendAsync(aSendArgs))//投递发送请求，这个函数有可能同步发送出去，这时返回false，并且不会引发AsyncEventArgs.Completed事件  
                 {
                     // 同步发送时处理发送完成事件  
                     ProcessSend(aSendArgs);
                 }
+
+                sb.Clear();
+                sb.Append(DateTime.Now.ToString("[HH:mm:ss.fff] ") + "  Tx: ");
+                for (int i = offset; i < offset + count; i++)
+                {
+                    sb.Append(buffer[i].ToString("X2") + " ");
+                }
+                LogOut?.Invoke("server.Send", new LogOutEventArgs(0, sb.ToString()));
             }
         }
 
@@ -494,23 +597,30 @@ namespace AsyncSocketServer
         /// 发送完成时处理函数  
         /// </summary>  
         /// <param name="e">与发送完成操作相关联的SocketAsyncEventArg对象</param>  
-        private void ProcessSend(SocketAsyncEventArgs aSendArgs)
+        private void ProcessSend(AsyncEventArgs aSendArgs)
         {
             if (!IsRunning)
             {
                 return;
             }
 
+            var userToken = aSendArgs.UserToken as AsyncSocketUserToken;
+
             if (aSendArgs.SocketError == SocketError.Success)
             {
                 //TODO
-                AsyncSocketUserToken userToken = aSendArgs.UserToken as AsyncSocketUserToken;
                 userToken.ActiveTime = DateTime.Now;
             }
             else
             {
                 CloseClientSocket(aSendArgs);
             }
+
+            userToken.FreeArgs(aSendArgs);
+
+            //Log4Debug(string.Format("recv FreeArgs, alloc pool: {0} ,  free pool: {1}",
+            //                userToken.AllocArgsPoolCnt, userToken.FreeArgsPoolCnt));
+
         }
         #endregion
 
@@ -521,7 +631,7 @@ namespace AsyncSocketServer
         /// </summary>  
         /// <param name="s"></param>  
         /// <param name="e"></param>  
-        public void CloseClientSocket(SocketAsyncEventArgs e)
+        public void CloseClientSocket(AsyncEventArgs e)
         {
             AsyncSocketUserToken userToken = e.UserToken as AsyncSocketUserToken;
 
@@ -550,6 +660,9 @@ namespace AsyncSocketServer
             _maxAcceptClientSem.Release();
             _userTokenPool.Push(userToken);
             _clientList.Remove(userToken);
+
+            OnConnectChange?.Invoke("discnnt", userToken.RecvEventArgs);
+
         }
         #endregion
 

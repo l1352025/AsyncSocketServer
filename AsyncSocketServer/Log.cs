@@ -79,11 +79,17 @@ namespace AsyncSocketServer
         {
             Write(_logFilePath, text);
         }
-        public void WriteLine(string text)
+        public void WriteLine(string text, bool addTime = false)
         {
+            if (addTime)
+            {
+                text = DateTime.Now.ToString("[yyyy-MM-dd HH:mm:ss.fff] ")  + text;
+            }
             text += "\r\n";
             Write(_logFilePath, text);
         }
+
+
        
         /// <summary>
         /// 追加一条16进制字节信息 如果文件不存在，则自动创建
@@ -127,7 +133,7 @@ namespace AsyncSocketServer
             _logMutex.WaitOne();
             using (StreamWriter sw = new StreamWriter(filePath, true, Encoding.UTF8))
             {
-                sw.Write(DateTime.Now.ToString("[yyyy-MM-dd HH:mm:ss.fff] ") + text);
+                sw.Write(text);
                 sw.Close();
             }
             _logMutex.ReleaseMutex();

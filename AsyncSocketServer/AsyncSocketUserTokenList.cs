@@ -7,6 +7,11 @@ namespace AsyncSocketServer
     {
         private List<AsyncSocketUserToken> _list;
 
+        public AsyncSocketUserToken this[int index] => _list[index];
+
+        public int Count => _list.Count;
+        public List<AsyncSocketUserToken> List => _list;
+
         public AsyncSocketUserTokenList()
         {
             _list = new List<AsyncSocketUserToken>();
