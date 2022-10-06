@@ -32,7 +32,7 @@ namespace AsyncSocketServer
         Packet pkt = new Packet();
         UserData usrInfo = new UserData();
         BufferManager _bufferMgr = new BufferManager(800, 250 * 1024, 2000, 6 * 1024);
-        Log Log = new Log("C:\\Users\\wushu\\Desktop\\server.log");
+        LogHelper Log = new LogHelper("C:\\Users\\wushu\\Desktop\\server.log");
         string _videoBaseDir = "D:\\video";
 
 
@@ -62,11 +62,6 @@ namespace AsyncSocketServer
             _threadVideoSave = new Thread(VideoSaveTask) { IsBackground = true };
             _threadVideoSave.Start();
 
-            //for (int i = 0; i < pkt.Length; i++)
-            //{
-            //    pkt[i] = new Packet();
-            //}
-
             //usrInfo.userBind = "27924571";  // 绑定账号
             //usrInfo.pswdBind = "27924571";
             //usrInfo.userBind = "31810750";  // 绑定账号
@@ -83,7 +78,7 @@ namespace AsyncSocketServer
 
         private void UI_Load(object sender, EventArgs e)
         {
-            DataAccess da = new DataAccess();
+            XmlObjDb da = new XmlObjDb();
 
             DataTable tb = new DataTable("testTb");
             tb.Columns.Add("Id");
@@ -954,15 +949,15 @@ namespace AsyncSocketServer
         {
             if (usrInfo.BjlXian != 0) return;
 
-            usrInfo.BjlXian = odds.xianHu;
-            usrInfo.BjlHe = odds.he;
-            usrInfo.BjlZhuang = odds.zhuangLong;
-            usrInfo.BjlXianDui = odds.xianDui;
-            usrInfo.BjlZhuangDui = odds.zhuangDui;
+            usrInfo.BjlXian = odds.xianHu + 1;
+            usrInfo.BjlHe = odds.he + 1;
+            usrInfo.BjlZhuang = odds.zhuangLong + 1;
+            usrInfo.BjlXianDui = odds.xianDui + 1;
+            usrInfo.BjlZhuangDui = odds.zhuangDui + 1;
 
-            usrInfo.LhHu = 0.95f;       // odds.xianHu;
-            usrInfo.LhHe = odds.he;
-            usrInfo.LhLong = 0.95f;     // odds.zhuangLong;
+            usrInfo.LhHu = 0.95f + 1;       // odds.xianHu;
+            usrInfo.LhHe = odds.he + 1;
+            usrInfo.LhLong = 0.95f + 1;     // odds.zhuangLong;
         }
 
         private void SetBetInfo(int type, int desk)
@@ -1091,7 +1086,7 @@ namespace AsyncSocketServer
             {
                 for (int i = openList.Count; i < curr.roundTime; i++)
                 {
-                    var openRst = new OpenResult();
+                    var openRst = new OpenResultInfo();
 
                     openRst.desk = pkt.openListRsp.desk;
                     openRst.round = pkt.openListRsp.round;
@@ -1172,7 +1167,7 @@ namespace AsyncSocketServer
                 pkt.openResult.profit = usrInfo.profit;
                 pkt.openResult.win = curr.winTotal;
 
-                var openRerult = new OpenResult();
+                var openRerult = new OpenResultInfo();
                 openRerult.date = curr.date;
                 openRerult.time = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
                 openRerult.desk = curr.desk;
@@ -1228,7 +1223,7 @@ namespace AsyncSocketServer
         {
             var curr = usrInfo.betStates[desk - 1];
 
-            List<OpenResult> list = usrInfo.openResultList;
+            List<OpenResultInfo> list = usrInfo.openResultList;
             int idx = list.Count - 5;   // 最近 10 ~5 局内寻找
             int cnt = 5;
             int oldIdx;

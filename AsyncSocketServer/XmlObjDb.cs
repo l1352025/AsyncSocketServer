@@ -1,28 +1,25 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Xml;
 using System.Xml.Serialization;
 using System.IO;
-using System.Threading;
 
 namespace AsyncSocketServer
 {
-    class DataAccess
+    class XmlObjDb
     {
 
         private List<UserInfo> _users;
 
         private string _dbFileUser;
-        private string _dbFileOrder;
-        private string _dbFileDefualt;
+        //private string _dbFileOrder;
+        //private string _dbFileDefualt;
 
-        public DataAccess ()
+        public XmlObjDb ()
         {
             _dbFileUser = "user.xml";
-            _dbFileOrder = "order.xml";
-            _dbFileDefualt = "default.xml";
+            //_dbFileOrder = "order.xml";
+            //_dbFileDefualt = "default.xml";
 
             _users = new List<UserInfo>();
 

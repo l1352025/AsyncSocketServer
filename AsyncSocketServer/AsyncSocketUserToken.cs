@@ -19,8 +19,7 @@ namespace AsyncSocketServer
 
         //public UserInfoModel UserInfo { get; set; }   // 所属用户信息 
 
-        public int AllocArgsPoolCnt => _eventArgsPool.AllocCount;
-        public int FreeArgsPoolCnt => _eventArgsPool.FreeCount;
+        public int PoolCnt => _eventArgsPool.Count;
 
         public Socket ConnectSocket                     // 通信SOKET
         {

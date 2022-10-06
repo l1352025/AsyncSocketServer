@@ -72,8 +72,8 @@
     <Compile Include="BufferItem.cs" />
     <Compile Include="BufferManager.cs" />
     <Compile Include="DaemonThread.cs" />
-    <Compile Include="DataAccess.cs" />
-    <Compile Include="Log.cs" />
+    <Compile Include="XmlObjDb.cs" />
+    <Compile Include="LogHelper.cs" />
     <Compile Include="LogOutEventArgs.cs" />
     <Compile Include="Packet.cs" />
     <Compile Include="Program.cs" />

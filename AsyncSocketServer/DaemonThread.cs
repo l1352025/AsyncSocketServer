@@ -40,8 +40,8 @@ namespace AsyncSocketServer
                     }
                     catch (Exception E)
                     {
-                        Program.Logger.WriteLine(string.Format("Daemon thread check timeout socket error, message: {0}", E.Message));
-                        Program.Logger.WriteLine(E.StackTrace);
+                        Program.Log.WriteLine(string.Format("Daemon thread check timeout socket error, message: {0}", E.Message));
+                        Program.Log.WriteLine(E.StackTrace);
                     }
                 }
 

@@ -724,13 +724,13 @@ namespace AsyncSocketServer
 
             //Console.WriteLine("[" + DateTime.Now.ToString("yyyy-MM-dd hh:MM:ss.fff") + "] " + msg);
 
-            //Program.Logger.WriteLine(msg);
+            //Program.Log.WriteLine(msg);
 
         }
 
         public void Error2File(string msg)
         {
-            Log.Error(msg);
+            Program.Log.WriteLine(msg);
         }
         #endregion
     }

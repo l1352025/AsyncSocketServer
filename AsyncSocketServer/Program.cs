@@ -10,19 +10,19 @@ namespace AsyncSocketServer
 {
     class Program
     {
-        public static Log Logger;
+        public static ElectricPowerLib.Common.LogHelper Log;
         [STAThread]
         static void Main(string[] args)
         {
-            Logger = new Log();
+            Log = new ElectricPowerLib.Common.LogHelper("error.log");
 
             //test code start
-            using (StreamWriter sw = new StreamWriter(".\\test.txt", false, Encoding.UTF8))
-            {
-                for (int i = 0; i < 256; i++) sw.Write("X");
+            //using (StreamWriter sw = new StreamWriter(".\\test.txt", false, Encoding.UTF8))
+            //{
+            //    for (int i = 0; i < 256; i++) sw.Write("X");
 
-                sw.Close();
-            }
+            //    sw.Close();
+            //}
             // test code end
 
             /* // no ui
@@ -33,11 +33,9 @@ namespace AsyncSocketServer
             System.Console.ReadLine();
             */
 
-            // /* // use ui
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new UI());
-            // */
         }
     }
 }
